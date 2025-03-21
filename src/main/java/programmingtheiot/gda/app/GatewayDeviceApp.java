@@ -13,6 +13,10 @@ package programmingtheiot.gda.app;
 
 import java.util.logging.Level;
 import java.util.logging.Logger;
+
+import programmingtheiot.common.ConfigConst;
+import programmingtheiot.common.ConfigUtil;
+
 import programmingtheiot.gda.system.SystemPerformanceManager;
 
 /**
@@ -46,10 +50,8 @@ public class GatewayDeviceApp
 		
 		_Logger.info("Initializing GDA...");
 		
-		this.sysPerfMgr = new SystemPerformanceManager();
-
-		parseArgs(args);
 	}
+	
 	/**
 	 * Constructor.
 	 * 
@@ -68,17 +70,33 @@ public class GatewayDeviceApp
 	{
 		GatewayDeviceApp gwApp = new GatewayDeviceApp(args);
 		
+
 		gwApp.startApp();
-		
-		try {
-			Thread.sleep(65000L);
-		} catch (InterruptedException e) {
-			// ignore
+
+		// TODO: custom add to ConfigConst for convenience
+		boolean runForever = ConfigUtil.getInstance().getBoolean(ConfigConst.GATEWAY_DEVICE, ConfigConst.ENABLE_RUN_FOREVER_KEY);
+
+		if (runForever) {
+			try {
+				// TODO: make the 2000L configurable
+				while (true) {
+					Thread.sleep(2000L);
+				}
+			} catch (InterruptedException e) {
+				// ignore
+			}
+
+			gwApp.stopApp(0);
+		} else {
+			try {
+				Thread.sleep(DEFAULT_TEST_RUNTIME);
+			} catch (InterruptedException e) {
+				// ignore
+			}
+
+			gwApp.stopApp(0);
 		}
-		
-		gwApp.stopApp(0);
 	}
-	
 	
 	// public methods
 	
