@@ -31,13 +31,12 @@ import programmingtheiot.gda.connection.IRequestResponseClient;
 import programmingtheiot.gda.connection.MqttClientConnector;
 import programmingtheiot.gda.connection.RedisPersistenceAdapter;
 import programmingtheiot.gda.connection.SmtpClientConnector;
-
 import programmingtheiot.gda.system.SystemPerformanceManager;
 
 /**
  * Shell representation of class for student implementation.
-*
-*/
+ *
+ */
 public class DeviceDataManager implements IDataMessageListener
 {
 	// static
@@ -67,7 +66,7 @@ public class DeviceDataManager implements IDataMessageListener
 	public DeviceDataManager()
 	{
 		super();
-
+		
 		ConfigUtil configUtil = ConfigUtil.getInstance();
 
 		this.enableMqttClient =
@@ -86,9 +85,8 @@ public class DeviceDataManager implements IDataMessageListener
 			configUtil.getBoolean(
 				ConfigConst.GATEWAY_DEVICE, ConfigConst.ENABLE_PERSISTENCE_CLIENT_KEY);
 
-		initManager();
+		initConnections();
 	}
-	
 	
 	public DeviceDataManager(
 		boolean enableMqttClient,
@@ -106,52 +104,53 @@ public class DeviceDataManager implements IDataMessageListener
 	// public methods
 	
 	@Override
-	public boolean handleActuatorCommandRequest(ResourceNameEnum resourceName, ActuatorData data)
-	{
-		return false;
-	}
-	
-	@Override
 	public boolean handleActuatorCommandResponse(ResourceNameEnum resourceName, ActuatorData data)
 	{
 		if (data != null) {
 			_Logger.info("Handling actuator response: " + data.getName());
-
-			// this next call is optional for now
+	
+			// Esta siguiente llamada es opcional por ahora
 			//this.handleIncomingDataAnalysis(resourceName, data);
-
+	
 			if (data.hasError()) {
 				_Logger.warning("Error flag set for ActuatorData instance.");
 			}
-
+	
 			return true;
 		} else {
 			return false;
 		}
+	}
+
+	@Override
+	public boolean handleActuatorCommandRequest(ResourceNameEnum resourceName, ActuatorData data)
+	{
+		return false;
 	}
 
 	@Override
 	public boolean handleIncomingMessage(ResourceNameEnum resourceName, String msg)
 	{
 		if (msg != null) {
-			_Logger.info("Handling incoming generic message: " + msg);
+		_Logger.info("Handling incoming generic message: " + msg);
 
-			return true;
-		} else {
-			return false;
-		}
+		return true;
+	} else {
+		return false;
 	}
+}
+	
 
 	@Override
 	public boolean handleSensorMessage(ResourceNameEnum resourceName, SensorData data)
 	{
 		if (data != null) {
 			_Logger.info("Handling sensor message: " + data.getName());
-
+	
 			if (data.hasError()) {
 				_Logger.warning("Error flag set for SensorData instance.");
 			}
-
+	
 			return true;
 		} else {
 			return false;
@@ -163,17 +162,16 @@ public class DeviceDataManager implements IDataMessageListener
 	{
 		if (data != null) {
 			_Logger.info("Handling system performance message: " + data.getName());
-
+	
 			if (data.hasError()) {
 				_Logger.warning("Error flag set for SystemPerformanceData instance.");
 			}
-
+	
 			return true;
 		} else {
 			return false;
 		}
 	}
-	
 	
 	public void setActuatorDataListener(String name, IActuatorDataListener listener)
 	{
@@ -181,6 +179,30 @@ public class DeviceDataManager implements IDataMessageListener
 	
 	public void startManager()
 	{
+		if (this.mqttClient != null) {
+			if (this.mqttClient.connectClient()) {
+				_Logger.info("Cliente MQTT conectado exitosamente al broker.");
+	
+				// agregar suscripciones necesarias
+	
+				// TODO: leer esto del archivo de configuración
+				int qos = ConfigConst.DEFAULT_QOS;
+	
+				// TODO: verificar el valor de retorno de cada uno y tomar acción apropiada
+	
+				// NOTA IMPORTANTE: Las llamadas al método 'subscribeToTopic()' mostradas
+				// abajo se moverán a MqttClientConnector.connectComplete()
+				// en el Módulo de Laboratorio 10. Por ahora, pueden permanecer aquí.
+				this.mqttClient.subscribeToTopic(ResourceNameEnum.GDA_MGMT_STATUS_MSG_RESOURCE, qos);
+				this.mqttClient.subscribeToTopic(ResourceNameEnum.CDA_ACTUATOR_RESPONSE_RESOURCE, qos);
+				this.mqttClient.subscribeToTopic(ResourceNameEnum.CDA_SENSOR_MSG_RESOURCE, qos);
+				this.mqttClient.subscribeToTopic(ResourceNameEnum.CDA_SYSTEM_PERF_MSG_RESOURCE, qos);
+			} else {
+				_Logger.severe("No se pudo conectar el cliente MQTT al broker.");
+	
+				// TODO: tomar acción apropiada
+			}
+		}
 		if (this.sysPerfMgr != null) {
 			this.sysPerfMgr.startManager();
 		}
@@ -191,46 +213,70 @@ public class DeviceDataManager implements IDataMessageListener
 		if (this.sysPerfMgr != null) {
 			this.sysPerfMgr.stopManager();
 		}
+		if (this.mqttClient != null) {
+			// agregar des-suscripciones necesarias
+	
+			// TODO: verificar el valor de retorno de cada uno y tomar acción apropiada
+	
+			// NOTA: Las llamadas a unsubscribeFromTopic() deben coincidir con
+			// las llamadas a subscribeToTopic() de startManager(). Además, la
+			// lógica de des-suscripción puede moverse al método disconnectClient()
+			// de MqttClientConnector ANTES de desconectarse del
+			// broker MQTT.
+			this.mqttClient.unsubscribeFromTopic(ResourceNameEnum.GDA_MGMT_STATUS_MSG_RESOURCE);
+			this.mqttClient.unsubscribeFromTopic(ResourceNameEnum.CDA_ACTUATOR_RESPONSE_RESOURCE);
+			this.mqttClient.unsubscribeFromTopic(ResourceNameEnum.CDA_SENSOR_MSG_RESOURCE);
+			this.mqttClient.unsubscribeFromTopic(ResourceNameEnum.CDA_SYSTEM_PERF_MSG_RESOURCE);
+	
+			if (this.mqttClient.disconnectClient()) {
+				_Logger.info("Cliente MQTT desconectado exitosamente del broker.");
+			} else {
+				_Logger.severe("Fallo al desconectar el cliente MQTT del broker.");
+	
+				// TODO: tomar acción apropiada
+			}
+		}
 	}
+
 	
 	// private methods
 	
 	/**
 	 * Initializes the enabled connections. This will NOT start them, but only create the
-	* instances that will be used in the {@link #startManager() and #stopManager()) methods.
-	* 
-	*/
+	 * instances that will be used in the {@link #startManager() and #stopManager()) methods.
+	 * 
+	 */
 	private void initConnections()
-	{
-	}
-
-	private void initManager()
 	{
 		ConfigUtil configUtil = ConfigUtil.getInstance();
 
-		this.enableSystemPerf =
-			configUtil.getBoolean(ConfigConst.GATEWAY_DEVICE,  ConfigConst.ENABLE_SYSTEM_PERF_KEY);
+	this.enableSystemPerf =
+		configUtil.getBoolean(ConfigConst.GATEWAY_DEVICE,  ConfigConst.ENABLE_SYSTEM_PERF_KEY);
 
-		if (this.enableSystemPerf) {
-			this.sysPerfMgr = new SystemPerformanceManager();
-			this.sysPerfMgr.setDataMessageListener(this);
-		}
+	if (this.enableSystemPerf) {
+		this.sysPerfMgr = new SystemPerformanceManager();
+		this.sysPerfMgr.setDataMessageListener(this);
+	}
 
-		if (this.enableMqttClient) {
-			// TODO: implement this in Lab Module 7
-		}
+	if (this.enableMqttClient) {
+		// TODO: implementar esto en el Módulo de Laboratorio 7
+		this.mqttClient = new MqttClientConnector();
 
-		if (this.enableCoapServer) {
-			// TODO: implement this in Lab Module 8
-		}
+		// NOTA: La siguiente línea no es técnicamente necesaria hasta el Módulo de Laboratorio 10
+		this.mqttClient.setDataMessageListener(this);
+	}
 
-		if (this.enableCloudClient) {
-			// TODO: implement this in Lab Module 10
-		}
+	if (this.enableCoapServer) {
+		// TODO: implementar esto en el Módulo de Laboratorio 8
+	}
 
-		if (this.enablePersistenceClient) {
-			// TODO: implement this as an optional exercise in Lab Module 5
-		}
+	if (this.enableCloudClient) {
+		// TODO: implementar esto en el Módulo de Laboratorio 10
+	}
+
+	if (this.enablePersistenceClient) {
+		// TODO: implementar esto como un ejercicio opcional en el Módulo de Laboratorio 5
+	}
 	}
 	
 }
