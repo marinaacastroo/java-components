@@ -42,7 +42,7 @@ public class UpdateTelemetryResourceHandler extends CoapResource{
                 SensorData sensorData =
                     programmingtheiot.data.DataUtil.getInstance().jsonToSensorData(jsonData);
 
-                this.dataMsgListener.handleSensorDataMessage(
+                this.dataMsgListener.handleSensorMessage(
                     programmingtheiot.common.ResourceNameEnum.CDA_SENSOR_MSG_RESOURCE, sensorData);
 
                 code = ResponseCode.CHANGED;
