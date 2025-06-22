@@ -32,7 +32,7 @@ public class GenericCoapResourceHandler extends CoapResource
 		Logger.getLogger(GenericCoapResourceHandler.class.getName());
 	
 	// params
-	
+	private IDataMessageListener dataMsgListener = null;
 	
 	// constructors
 	
