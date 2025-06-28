@@ -1,5 +1,5 @@
 #####
-# Configuration file for the Gateway Device App (GDA)
+# Configuration file for the Constrained Device App (CDA)
 #
 # This provides a section-based configuration format for use by
 # ConfigUtil with keys defined in ConfigConst.
@@ -8,50 +8,21 @@
 #
 
 #
-# Cloud client configuration information
-#
-[Cloud.GatewayService]
-credFile       = ./cred/PiotCloudCred.props
-certFile       = ./cert/PiotCloudCert.pem
-host           = localhost
-port           = 1883
-securePort     = 8883
-defaultQoS     = 0
-keepAlive      = 60
-useAsyncClient = True
-enableAuth     = True
-enableCrypt    = True
-baseUrl        = 
-baseTopic      = 
-
-#
-# SMTP client configuration information
-#
-[Smtp.GatewayService]
-credFile       = ./cred/PiotSmtpCred.props
-host           = localhost
-port           = 25
-securePort     = 587
-enableAuth     = True
-enableCrypt    = True
-
-#
 # MQTT client configuration information
 #
 [Mqtt.GatewayService]
-credFile       = ./cred/PiotMqttCred.props
-certFile       = ./cert/PiotMqttLocalCertFile.pem
+credFile       = ./cred/PiotMqttLocalCred.props
+certFile       = /mnt/c/Users/Usuario/OneDrive - Universidade de Vigo/Documentos/IA/PIC/certs/ca.crt
 host           = localhost
 port           = 1883
 securePort     = 8883
 defaultQoS     = 0
 keepAlive      = 60
 enableAuth     = False
-enableCrypt    = False
-useAsyncClient = False
+enableCrypt    = True
 
 #
-# CoAP client and server configuration information
+# CoAP client configuration information
 #
 [Coap.GatewayService]
 credFile       = ./cred/PiotCoapCred.props
@@ -61,22 +32,51 @@ port           = 5683
 securePort     = 5684
 enableAuth     = False
 enableCrypt    = False
-enableConfirmedMsgs = True
 
 #
-# GDA specific configuration information
+# CDA specific configuration information
 #
-[GatewayDevice]
-deviceLocationID        = gatewaydevice001
-enableLogging           = True
-pollCycleSecs           = 60
-enableMqttClient        = True
-enableCoapServer        = False
-enableCoapClient        = False
-enableCloudClient       = False
-enableSmtpClient        = False
-enablePersistenceClient = False
-enableSystemPerformance = False
-testGdaDataPath         = /tmp/gda-data
-testCdaDataPath         = /tmp/cda-data
-testEmptyApp            = False
+[ConstrainedDevice]
+deviceLocationID = constraineddevice001
+enableEmulator   = True
+enableSenseHAT   = False
+enableMqttClient = True
+enableCoapServer = False
+enableCoapClient = False
+enableSystemPerformance = True
+enableSensing    = True
+enableLogging    = True
+enableSimulator  = True
+enableActuation  = True
+pollCycleSecs    = 5
+testGdaDataPath  = /tmp/gda-data
+testCdaDataPath  = /tmp/cda-data
+testEmptyApp     = False
+
+# configurable limits for sensor simulation
+humiditySimFloor   =   35.0
+humiditySimCeiling =   45.0
+pressureSimFloor   =  990.0
+pressureSimCeiling = 1010.0
+tempSimFloor       =   15.0
+tempSimCeiling     =   25.0
+
+# configurable limits for actuator triggers
+handleTempChangeOnDevice = True
+triggerHvacTempFloor     = 18.0
+triggerHvacTempCeiling   = 20.0
+
+# camera settings
+streamHostAddr      = 127.0.0.1
+streamHostLabel     = localhost
+streamPort          = 8554
+streamProtocol      = rtsp
+streamPath          = stream
+streamEncoding      = MJPG
+streamFrameWidth    = 1440
+streamFrameHeight   = 1080
+streamFps           =   30
+imageFileExt        = .png
+videoFileExt        = .avi
+minMotionPixelsDiff = 10000
+useAsyncClient = False

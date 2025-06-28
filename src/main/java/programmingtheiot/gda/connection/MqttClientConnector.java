@@ -45,7 +45,7 @@ public class MqttClientConnector implements IPubSubClient, MqttCallbackExtended
 
 	private String  clientID = null;
 	private String  brokerAddr = null;
-	private String  host = ConfigConst.DEFAULT_HOST;
+	private String  host = "127.0.0.1";  // Usar IP local específica
 	private String  protocol = ConfigConst.DEFAULT_MQTT_PROTOCOL;
 	private int     port = ConfigConst.DEFAULT_MQTT_PORT;
 	private int     brokerKeepAlive = ConfigConst.DEFAULT_KEEP_ALIVE;
@@ -94,7 +94,7 @@ public class MqttClientConnector implements IPubSubClient, MqttCallbackExtended
 	// NOTA: el cliente Java paho requiere un client ID - por ahora,
 	// puedes usar el client ID generado; para ejercicios posteriores,
 	// deberías definir uno propio y cargarlo desde el archivo de configuración
-		this.clientID = MqttClient.generateClientId();
+		this.clientID = "GDA-" + MqttClient.generateClientId();
 
 	// estos son específicos para la conexión MQTT que se usará durante el connect
 		this.persistence = new MemoryPersistence();
@@ -104,10 +104,13 @@ public class MqttClientConnector implements IPubSubClient, MqttCallbackExtended
 
 	// NOTA: Si se usa un clientID aleatorio para cada nueva conexión,
 	// la sesión limpia debe estar en 'true'; ver especificación MQTT para más detalles
-		this.connOpts.setCleanSession(false);
+		this.connOpts.setCleanSession(true);
 
 	// NOTA: La reconexión automática puede ser una función útil para recuperación de conexión
-		this.connOpts.setAutomaticReconnect(true);
+		this.connOpts.setAutomaticReconnect(false);
+		
+		// Configurar timeout de conexión
+		this.connOpts.setConnectionTimeout(30);
 
 	// NOTA: La URL no tiene un manejador de protocolo para "tcp",
 	// así que necesitamos construir la URL manualmente
@@ -121,21 +124,41 @@ public class MqttClientConnector implements IPubSubClient, MqttCallbackExtended
 	public boolean connectClient()
 	{
 		try {
+			// Si el cliente ya existe y está conectado, retornar true
+			if (this.mqttClient != null && this.mqttClient.isConnected()) {
+				_Logger.info("MQTT client already connected to broker: " + this.brokerAddr);
+				return true;
+			}
+			
+			// Si el cliente es nulo o no está conectado, crear uno nuevo
 			if (this.mqttClient == null) {
+				_Logger.info("Creating new MQTT client with broker address: " + this.brokerAddr);
 				this.mqttClient = new MqttClient(this.brokerAddr, this.clientID, this.persistence);
 				this.mqttClient.setCallback(this);
 			}
-	
-			if (! this.mqttClient.isConnected()) {
-				_Logger.info("MQTT client connecting to broker: " + this.brokerAddr);
-				this.mqttClient.connect(this.connOpts);
+			
+			// Intentar conectar
+			_Logger.info("MQTT client connecting to broker: " + this.brokerAddr);
+			_Logger.info("Client ID: " + this.clientID);
+			_Logger.info("Keep Alive: " + this.brokerKeepAlive);
+			
+			this.mqttClient.connect(this.connOpts);
+			
+			if (this.mqttClient.isConnected()) {
+				_Logger.info("Successfully connected to broker");
 				return true;
 			} else {
-				_Logger.warning("MQTT client already connected to broker: " + this.brokerAddr);
+				_Logger.warning("Failed to connect - client reports not connected after connect attempt");
+				return false;
 			}
 		} catch (MqttException e) {
-			// TODO: manejar esta excepción
-			_Logger.log(Level.SEVERE, "Failed to connect MQTT client to broker.", e);
+			_Logger.log(Level.SEVERE, "Failed to connect MQTT client to broker: " + e.getMessage(), e);
+			_Logger.info("Broker Address: " + this.brokerAddr);
+			_Logger.info("Client ID: " + this.clientID);
+			_Logger.info("Error code: " + e.getReasonCode());
+			
+			// Limpiar el cliente en caso de error
+			this.mqttClient = null;
 		}
 		return false;
 	}
@@ -170,14 +193,7 @@ public class MqttClientConnector implements IPubSubClient, MqttCallbackExtended
 	@Override
 	public boolean publishMessage(ResourceNameEnum topicName, String msg, int qos)
 	{
-		// TODO: determina cuán detallado debe ser tu logging, especialmente si este método se llama con frecuencia
-		if (topicName == null) {
-			_Logger.warning("El recurso es nulo. No se puede publicar el mensaje: " + this.brokerAddr);
-			return false;
-		}
-
-		if (msg == null || msg.length() == 0) {
-			_Logger.warning("El mensaje es nulo o está vacío. No se puede publicar el mensaje: " + this.brokerAddr);
+		if (topicName == null || msg == null || msg.length() == 0) {
 			return false;
 		}
 
@@ -192,9 +208,8 @@ public class MqttClientConnector implements IPubSubClient, MqttCallbackExtended
 			this.mqttClient.publish(topicName.getResourceName(), mqttMsg);
 			return true;
 		} catch (Exception e) {
-			_Logger.log(Level.SEVERE, "Fallo al publicar mensaje en el tópico: " + topicName, e);
+			return false;
 		}
-		return false;
 	}
 
 	@Override
@@ -270,8 +285,7 @@ public class MqttClientConnector implements IPubSubClient, MqttCallbackExtended
 	@Override
 	public void deliveryComplete(IMqttDeliveryToken token)
 	{
-		// TODO: El nivel de logging puede necesitar ser ajustado para ver la salida en el archivo de log / consola
-		_Logger.fine("Mensaje MQTT entregado con ID: " + token.getMessageId());
+		// Logging disabled for performance testing
 	}
 	
 	@Override
