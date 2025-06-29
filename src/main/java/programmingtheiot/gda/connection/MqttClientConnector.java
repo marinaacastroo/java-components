@@ -202,10 +202,13 @@ public class MqttClientConnector implements IPubSubClient, MqttCallbackExtended
 		}
 
 		try {
-			byte[] payload = msg.getBytes();
-			MqttMessage mqttMsg = new MqttMessage(payload);
-			mqttMsg.setQos(qos);
-			this.mqttClient.publish(topicName.getResourceName(), mqttMsg);
+			// Logging disabled for performance testing
+			this.mqttClient.publish(
+				topicName.getResourceName(),
+				msg.getBytes(),
+				qos,
+				false
+			);
 			return true;
 		} catch (Exception e) {
 			return false;
