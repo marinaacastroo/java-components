@@ -8,10 +8,15 @@
 
 package programmingtheiot.gda.connection;
 
+import java.io.File;
+import java.util.Properties;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import javax.net.ssl.SSLSocketFactory;
+
 import org.eclipse.paho.client.mqttv3.IMqttDeliveryToken;
+import org.eclipse.paho.client.mqttv3.IMqttMessageListener;
 import org.eclipse.paho.client.mqttv3.MqttCallbackExtended;
 import org.eclipse.paho.client.mqttv3.MqttClient;
 import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
@@ -23,6 +28,7 @@ import programmingtheiot.common.ConfigConst;
 import programmingtheiot.common.ConfigUtil;
 import programmingtheiot.common.IDataMessageListener;
 import programmingtheiot.common.ResourceNameEnum;
+import programmingtheiot.common.SimpleCertManagementUtil;
 
 /**
  * Shell representation of class for student implementation.
@@ -49,6 +55,10 @@ public class MqttClientConnector implements IPubSubClient, MqttCallbackExtended
 	private String  protocol = ConfigConst.DEFAULT_MQTT_PROTOCOL;
 	private int     port = ConfigConst.DEFAULT_MQTT_PORT;
 	private int     brokerKeepAlive = ConfigConst.DEFAULT_KEEP_ALIVE;
+	private String pemFileName = null;
+	private boolean enableEncryption = false;
+	private boolean useCleanSession = false;
+	private boolean enableAutoReconnect = true;
 
 	
 	// constructors
@@ -60,61 +70,7 @@ public class MqttClientConnector implements IPubSubClient, MqttCallbackExtended
 	public MqttClientConnector()
 	{
 		super();
-		ConfigUtil configUtil = ConfigUtil.getInstance();
-
-		this.host =
-	    	configUtil.getProperty(
-	        	ConfigConst.MQTT_GATEWAY_SERVICE, ConfigConst.HOST_KEY, ConfigConst.DEFAULT_HOST);
-
-		this.port =
-	    	configUtil.getInteger(
-	        	ConfigConst.MQTT_GATEWAY_SERVICE, ConfigConst.PORT_KEY, ConfigConst.DEFAULT_MQTT_PORT);
-
-		this.brokerKeepAlive =
-	    	configUtil.getInteger(
-	        	ConfigConst.MQTT_GATEWAY_SERVICE, ConfigConst.KEEP_ALIVE_KEY, ConfigConst.DEFAULT_KEEP_ALIVE);
-
-	// Esta siguiente propiedad booleana del archivo de configuración es opcional; puede
-	// establecerse dentro de las secciones [Mqtt.GatewayService] y [Cloud.GatewayService]
-	// de PiotConfig.props. Puedes usarla para crear un flujo lógico dentro de esta clase
-	// para determinar si usar MqttClient o MqttAsyncClient, o simplemente elegir una de
-	// las dos clases según tus necesidades de uso. En general, MqttAsyncClient será
-	// necesario al ejecutar el GDA como una aplicación, ya que necesitará manejar mensajes
-	// entrantes y salientes usando MQTT simultáneamente. Para pruebas solo del GDA usando
-	// los casos de prueba especificados en este módulo de laboratorio y otros, generalmente
-	// es mejor - y probablemente requerido - usar MqttClient.
-	//
-	// IMPORTANTE: Si estás usando una versión antigua de ConfigConst.java,
-	// necesitarás agregar la siguiente línea de código a ConfigConst.java:
-	// public static final String USE_ASYNC_CLIENT_KEY = "useAsyncClient";
-		this.useAsyncClient =
-	    	configUtil.getBoolean(
-	        	ConfigConst.MQTT_GATEWAY_SERVICE, ConfigConst.USE_ASYNC_CLIENT_KEY);
-
-	// NOTA: el cliente Java paho requiere un client ID - por ahora,
-	// puedes usar el client ID generado; para ejercicios posteriores,
-	// deberías definir uno propio y cargarlo desde el archivo de configuración
-		this.clientID = "GDA-" + MqttClient.generateClientId();
-
-	// estos son específicos para la conexión MQTT que se usará durante el connect
-		this.persistence = new MemoryPersistence();
-		this.connOpts = new MqttConnectOptions();
-
-		this.connOpts.setKeepAliveInterval(this.brokerKeepAlive);
-
-	// NOTA: Si se usa un clientID aleatorio para cada nueva conexión,
-	// la sesión limpia debe estar en 'true'; ver especificación MQTT para más detalles
-		this.connOpts.setCleanSession(true);
-
-	// NOTA: La reconexión automática puede ser una función útil para recuperación de conexión
-		this.connOpts.setAutomaticReconnect(false);
-		
-		// Configurar timeout de conexión
-		this.connOpts.setConnectionTimeout(30);
-
-	// NOTA: La URL no tiene un manejador de protocolo para "tcp",
-	// así que necesitamos construir la URL manualmente
-		this.brokerAddr = this.protocol + "://" + this.host + ":" + this.port;
+		initClientParameters(ConfigConst.MQTT_GATEWAY_SERVICE);
 	}
 	
 	
@@ -324,7 +280,42 @@ public class MqttClientConnector implements IPubSubClient, MqttCallbackExtended
 	 */
 	private void initClientParameters(String configSectionName)
 	{
-		// TODO: implement this
+		ConfigUtil configUtil = ConfigUtil.getInstance();
+
+		this.host =
+			configUtil.getProperty(
+				configSectionName, ConfigConst.HOST_KEY, ConfigConst.DEFAULT_HOST);
+		this.port =
+			configUtil.getInteger(
+				configSectionName, ConfigConst.PORT_KEY, ConfigConst.DEFAULT_MQTT_PORT);
+		this.brokerKeepAlive =
+			configUtil.getInteger(
+				configSectionName, ConfigConst.KEEP_ALIVE_KEY, ConfigConst.DEFAULT_KEEP_ALIVE);
+		this.enableEncryption =
+			configUtil.getBoolean(
+				configSectionName, ConfigConst.ENABLE_CRYPT_KEY);
+		this.pemFileName =
+			configUtil.getProperty(
+				configSectionName, ConfigConst.CERT_FILE_KEY);
+		this.useAsyncClient =
+		    configUtil.getBoolean(
+		        ConfigConst.MQTT_GATEWAY_SERVICE, ConfigConst.USE_ASYNC_CLIENT_KEY);
+		this.clientID =
+			configUtil.getProperty(
+				ConfigConst.GATEWAY_DEVICE, ConfigConst.DEVICE_LOCATION_ID_KEY, MqttClient.generateClientId());
+		this.persistence = new MemoryPersistence();
+		this.connOpts    = new MqttConnectOptions();
+		this.connOpts.setKeepAliveInterval(this.brokerKeepAlive);
+		this.connOpts.setCleanSession(this.useCleanSession);
+		this.connOpts.setAutomaticReconnect(this.enableAutoReconnect);
+		if (this.enableEncryption) {
+			initSecureConnectionParameters(configSectionName);
+		}
+		if (configUtil.hasProperty(configSectionName, ConfigConst.CRED_FILE_KEY)) {
+			initCredentialConnectionParameters(configSectionName);
+		}
+		this.brokerAddr  = this.protocol + "://" + this.host + ":" + this.port;
+		_Logger.info("Using URL for broker conn: " + this.brokerAddr);
 	}
 	
 	/**
@@ -335,7 +326,20 @@ public class MqttClientConnector implements IPubSubClient, MqttCallbackExtended
 	 */
 	private void initCredentialConnectionParameters(String configSectionName)
 	{
-		// TODO: implement this
+		ConfigUtil configUtil = ConfigUtil.getInstance();
+		try {
+			_Logger.info("Checking if credentials file exists and is loadable...");
+			Properties props = configUtil.getCredentials(configSectionName);
+			if (props != null) {
+				this.connOpts.setUserName(props.getProperty(ConfigConst.USER_NAME_TOKEN_KEY, ""));
+				this.connOpts.setPassword(props.getProperty(ConfigConst.USER_AUTH_TOKEN_KEY, "").toCharArray());
+				_Logger.info("Credentials now set.");
+			} else {
+				_Logger.warning("No credentials are set.");
+			}
+		} catch (Exception e) {
+			_Logger.log(Level.WARNING, "Credential file non-existent. Disabling auth requirement.");
+		}
 	}
 	
 	/**
@@ -346,6 +350,30 @@ public class MqttClientConnector implements IPubSubClient, MqttCallbackExtended
 	 */
 	private void initSecureConnectionParameters(String configSectionName)
 	{
-		// TODO: implement this
+		ConfigUtil configUtil = ConfigUtil.getInstance();
+		try {
+			_Logger.info("Configuring TLS...");
+			if (this.pemFileName != null) {
+				File file = new File(this.pemFileName);
+				if (file.exists()) {
+					_Logger.info("PEM file valid. Using secure connection: " + this.pemFileName);
+				} else {
+					this.enableEncryption = false;
+					_Logger.log(Level.WARNING, "PEM file invalid. Using insecure connection: " + this.pemFileName, new Exception());
+					return;
+				}
+			}
+			SSLSocketFactory sslFactory =
+				SimpleCertManagementUtil.getInstance().loadCertificate(this.pemFileName);
+			this.connOpts.setSocketFactory(sslFactory);
+			this.port =
+				configUtil.getInteger(
+					configSectionName, ConfigConst.SECURE_PORT_KEY, ConfigConst.DEFAULT_MQTT_SECURE_PORT);
+			this.protocol = ConfigConst.DEFAULT_MQTT_SECURE_PROTOCOL;
+			_Logger.info("TLS enabled.");
+		} catch (Exception e) {
+			_Logger.log(Level.SEVERE, "Failed to initialize secure MQTT connection. Using insecure connection.", e);
+			this.enableEncryption = false;
+		}
 	}
 }

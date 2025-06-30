@@ -147,7 +147,7 @@ public class CoapClientPerformanceTest
 		long startMillis = System.currentTimeMillis();
 		
 		for (int seqNo = 0; seqNo < maxTestRuns; seqNo++) {
-			this.coapClient.sendPostRequest(ResourceNameEnum.CDA_SENSOR_MSG_RESOURCE, ConfigConst.TEMP_SENSOR_NAME, enableCON, payload, DEFAULT_TIMEOUT);
+			this.coapClient.sendPostRequest(ResourceNameEnum.CDA_SENSOR_MSG_RESOURCE, null, enableCON, payload, DEFAULT_TIMEOUT);
 		}
 		
 		long endMillis = System.currentTimeMillis();
@@ -164,7 +164,7 @@ public class CoapClientPerformanceTest
 		long startMillis = System.currentTimeMillis();
 		
 		for (int seqNo = 0; seqNo < maxTestRuns; seqNo++) {
-			this.coapClient.sendPutRequest(ResourceNameEnum.CDA_SENSOR_MSG_RESOURCE, ConfigConst.TEMP_SENSOR_NAME, enableCON, payload, DEFAULT_TIMEOUT);
+			this.coapClient.sendPutRequest(ResourceNameEnum.CDA_SENSOR_MSG_RESOURCE, null, enableCON, payload, DEFAULT_TIMEOUT);
 		}
 		
 		long endMillis = System.currentTimeMillis();

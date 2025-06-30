@@ -84,13 +84,49 @@ public class CoapClientConnector implements IRequestResponseClient
 	@Override
 	public boolean sendPostRequest(ResourceNameEnum resource, String name, boolean enableCON, String payload, int timeout)
 	{
-		return false;
+		try {
+			ConfigUtil configUtil = ConfigUtil.getInstance();
+			String host = configUtil.getProperty(ConfigConst.COAP_GATEWAY_SERVICE, ConfigConst.HOST_KEY, ConfigConst.DEFAULT_HOST);
+			int port = configUtil.getInteger(ConfigConst.COAP_GATEWAY_SERVICE, ConfigConst.PORT_KEY, ConfigConst.DEFAULT_COAP_PORT);
+			String serverAddr = "coap://" + host + ":" + port;
+			String uri = serverAddr + "/" + resource.getResourceName();
+
+			CoapClient client = new CoapClient(uri);
+			if (enableCON) {
+				client.useCONs();
+			} else {
+				client.useNONs();
+			}
+			client.setTimeout(timeout * 1000L);
+			CoapResponse response = client.post(payload, MediaTypeRegistry.APPLICATION_JSON);
+			return response != null;
+		} catch (Exception e) {
+			return false;
+		}
 	}
 
 	@Override
 	public boolean sendPutRequest(ResourceNameEnum resource, String name, boolean enableCON, String payload, int timeout)
 	{
-		return false;
+		try {
+			ConfigUtil configUtil = ConfigUtil.getInstance();
+			String host = configUtil.getProperty(ConfigConst.COAP_GATEWAY_SERVICE, ConfigConst.HOST_KEY, ConfigConst.DEFAULT_HOST);
+			int port = configUtil.getInteger(ConfigConst.COAP_GATEWAY_SERVICE, ConfigConst.PORT_KEY, ConfigConst.DEFAULT_COAP_PORT);
+			String serverAddr = "coap://" + host + ":" + port;
+			String uri = serverAddr + "/" + resource.getResourceName();
+
+			CoapClient client = new CoapClient(uri);
+			if (enableCON) {
+				client.useCONs();
+			} else {
+				client.useNONs();
+			}
+			client.setTimeout(timeout * 1000L);
+			CoapResponse response = client.put(payload, MediaTypeRegistry.APPLICATION_JSON);
+			return response != null;
+		} catch (Exception e) {
+			return false;
+		}
 	}
 
 	@Override
