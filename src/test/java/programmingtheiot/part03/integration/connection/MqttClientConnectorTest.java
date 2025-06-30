@@ -11,6 +11,8 @@ package programmingtheiot.part03.integration.connection;
 
 import static org.junit.Assert.*;
 
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 
 import org.junit.After;
@@ -99,29 +101,58 @@ public class MqttClientConnectorTest
 	{
 		int qos = 0;
 		int delay = ConfigUtil.getInstance().getInteger(ConfigConst.MQTT_GATEWAY_SERVICE, ConfigConst.KEEP_ALIVE_KEY, ConfigConst.DEFAULT_KEEP_ALIVE);
-		
+
+		final CountDownLatch latch = new CountDownLatch(3);
+		this.mqttClient.setDataMessageListener(new IDataMessageListener() {
+			@Override
+			public boolean handleActuatorCommandResponse(ResourceNameEnum resourceNameEnum, programmingtheiot.data.ActuatorData actuatorData) { return true; }
+			@Override
+			public boolean handleActuatorCommandRequest(ResourceNameEnum resourceNameEnum, programmingtheiot.data.ActuatorData actuatorData) { return true; }
+			@Override
+			public boolean handleSensorMessage(ResourceNameEnum resourceNameEnum, programmingtheiot.data.SensorData sensorData) { return true; }
+			@Override
+			public boolean handleSystemPerformanceMessage(ResourceNameEnum resourceNameEnum, programmingtheiot.data.SystemPerformanceData systemPerformanceData) { return true; }
+			@Override
+			public boolean handleIncomingMessage(ResourceNameEnum resourceNameEnum, String msg) {
+				latch.countDown();
+				return true;
+			}
+			@Override
+			public void setActuatorDataListener(String name, programmingtheiot.common.IActuatorDataListener listener) {}
+		});
+
 		assertTrue(this.mqttClient.connectClient());
+
+		// Esperar hasta que el cliente esté conectado (máx 10 segundos)
+		int waitCount = 0;
+		while (!this.mqttClient.isConnected() && waitCount < 100) {
+			try { Thread.sleep(100); } catch (Exception e) {}
+			waitCount++;
+		}
+		assertTrue("MQTT client did not connect in time", this.mqttClient.isConnected());
+
 		assertTrue(this.mqttClient.subscribeToTopic(ResourceNameEnum.GDA_MGMT_STATUS_MSG_RESOURCE, qos));
 		assertTrue(this.mqttClient.subscribeToTopic(ResourceNameEnum.CDA_ACTUATOR_RESPONSE_RESOURCE, qos));
 		assertTrue(this.mqttClient.subscribeToTopic(ResourceNameEnum.CDA_SENSOR_MSG_RESOURCE, qos));
 		assertTrue(this.mqttClient.subscribeToTopic(ResourceNameEnum.CDA_SYSTEM_PERF_MSG_RESOURCE, qos));
-		
+
 		try {
 			Thread.sleep(5000);
 		} catch (Exception e) {
 			// ignore
 		}
-		
+
 		assertTrue(this.mqttClient.publishMessage(ResourceNameEnum.GDA_MGMT_STATUS_MSG_RESOURCE, "TEST: This is the GDA message payload 1.", qos));
 		assertTrue(this.mqttClient.publishMessage(ResourceNameEnum.GDA_MGMT_STATUS_MSG_RESOURCE, "TEST: This is the GDA message payload 2.", qos));
 		assertTrue(this.mqttClient.publishMessage(ResourceNameEnum.GDA_MGMT_STATUS_MSG_RESOURCE, "TEST: This is the GDA message payload 3.", qos));
-		
+
 		try {
-			Thread.sleep(25000);
-		} catch (Exception e) {
-			// ignore
+			// Wait up to 30 seconds for all messages to be received
+			assertTrue("Did not receive all published messages in time.", latch.await(30, TimeUnit.SECONDS));
+		} catch (InterruptedException e) {
+			fail("Test interrupted while waiting for messages.");
 		}
-		
+
 		assertTrue(this.mqttClient.unsubscribeFromTopic(ResourceNameEnum.GDA_MGMT_STATUS_MSG_RESOURCE));
 		assertTrue(this.mqttClient.unsubscribeFromTopic(ResourceNameEnum.CDA_ACTUATOR_RESPONSE_RESOURCE));
 		assertTrue(this.mqttClient.unsubscribeFromTopic(ResourceNameEnum.CDA_SENSOR_MSG_RESOURCE));
