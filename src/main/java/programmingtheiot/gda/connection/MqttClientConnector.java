@@ -74,6 +74,17 @@ public class MqttClientConnector implements IPubSubClient, MqttCallbackExtended
 		initClientParameters(ConfigConst.MQTT_GATEWAY_SERVICE);
 	}
 	
+	/**
+	 * Constructor con nombre de sección de configuración.
+	 * 
+	 * @param configSectionName El nombre de la sección de configuración a utilizar.
+	 */
+	public MqttClientConnector(String configSectionName)
+	{
+		super();
+		initClientParameters(configSectionName);
+	}
+	
 	
 	// public methods
 	
@@ -150,6 +161,25 @@ public class MqttClientConnector implements IPubSubClient, MqttCallbackExtended
 			);
 			return true;
 		} catch (Exception e) {
+			return false;
+		}
+	}
+
+	// Permite publicar en un topic string arbitrario (para Ubidots)
+	public boolean publishMessage(String topic, String msg, int qos) {
+		if (topic == null || msg == null || msg.length() == 0) {
+			_Logger.severe("publishMessage: topic or msg is null/empty");
+			return false;
+		}
+		if (qos < 0 || qos > 2) {
+			qos = ConfigConst.DEFAULT_QOS;
+		}
+		try {
+			_Logger.info("Publishing to topic: " + topic + " | msg: " + msg);
+			this.mqttClient.publish(topic, msg.getBytes(), qos, false);
+			return true;
+		} catch (Exception e) {
+			_Logger.log(Level.SEVERE, "Exception in publishMessage to topic: " + topic, e);
 			return false;
 		}
 	}

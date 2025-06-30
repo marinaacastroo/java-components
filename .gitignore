@@ -2,4 +2,8 @@
 /target/
 **/cert
 **/cred
+certs/
+cred/
+*.pem
+*.props
 

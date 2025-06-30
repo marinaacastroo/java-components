@@ -17,6 +17,7 @@ import java.util.logging.Logger;
 import programmingtheiot.common.ConfigConst;
 import programmingtheiot.common.ConfigUtil;
 
+import programmingtheiot.gda.connection.CloudClientConnector;
 import programmingtheiot.gda.system.SystemPerformanceManager;
 
 /**
@@ -34,7 +35,8 @@ public class GatewayDeviceApp
 	
 	// private var's
 
-	private SystemPerformanceManager sysPerfMgr =null;
+	private SystemPerformanceManager sysPerfMgr = new SystemPerformanceManager();
+	private CloudClientConnector cloudClient = new CloudClientConnector();
 	
 	
 	// constructors
@@ -46,10 +48,8 @@ public class GatewayDeviceApp
 	 */
 	public GatewayDeviceApp(String[] args)
 	{
-		super();
-		
 		_Logger.info("Initializing GDA...");
-		
+		parseArgs(args);
 	}
 	
 	/**
@@ -107,20 +107,26 @@ public class GatewayDeviceApp
 	public void startApp()
 	{
 		_Logger.info("Starting GDA...");
-		
 		try {
+			// Explicit logging before publishing
+			_Logger.info("Connecting to Ubidots and publishing test payload...");
+			cloudClient.connectClient();
+			String deviceName = ConfigUtil.getInstance().getProperty(ConfigConst.GATEWAY_DEVICE, ConfigConst.DEVICE_LOCATION_ID_KEY, "gatewaydevice001");
+			String payload = "{\"temperature\": 25.5}";
+			_Logger.info("About to publish test payload to Ubidots: " + payload);
+			boolean publishResult = cloudClient.publishJsonToUbidots(deviceName, payload);
+			_Logger.info("Publish to Ubidots result: " + publishResult);
 			if (this.sysPerfMgr.startManager()) {
 				_Logger.info("GDA started successfully.");
-			}else {
+			} else {
 				_Logger.warning("Failed to start system performance manager!");
-			}
-			stopApp(-1); 
-			} catch (Exception e) {
-				_Logger.log(Level.SEVERE, "Failed to start GDA. Exiting.", e);
 				stopApp(-1);
+			}
+		} catch (Exception e) {
+			_Logger.log(Level.SEVERE, "Failed to start GDA. Exiting.", e);
+			stopApp(-1);
 		}
-		
-		}
+	}
 	
 	
 	/**
