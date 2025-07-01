@@ -18,6 +18,7 @@ import programmingtheiot.common.IDataMessageListener;
 import programmingtheiot.common.ResourceNameEnum;
 
 import programmingtheiot.data.ActuatorData;
+import programmingtheiot.data.DataUtil;
 import programmingtheiot.data.SensorData;
 import programmingtheiot.data.SystemPerformanceData;
 import programmingtheiot.data.SystemStateData;
@@ -52,11 +53,17 @@ public class DeviceDataManager implements IDataMessageListener
     // private variables (connection and manager instances)
     private IActuatorDataListener actuatorDataListener = null;
     private IPubSubClient mqttClient = null;
-    private IPubSubClient cloudClient = null;
+    private CloudClientConnector cloudClientConnector = null;
     private IPersistenceClient persistenceClient = null;
     private IRequestResponseClient smtpClient = null;
     private CoapServerGateway coapServer = null;
     private SystemPerformanceManager sysPerfMgr = null;
+    private RedisPersistenceAdapter persistenceAdapter = null;
+    private SmtpClientConnector smtpClientConnector = null;
+    private static final float TEMP_THRESHOLD = 30.0f; // Umbral de ejemplo
+    private SensorData lastSensorData = null;
+    private SystemPerformanceData lastSystemPerfData = null;
+    private SystemPerformanceData lastInternalPerfData = null;
     
     // constructors
     
@@ -139,6 +146,10 @@ public class DeviceDataManager implements IDataMessageListener
     {
         if (msg != null) {
             _Logger.info("Handling incoming generic message: " + msg);
+            if (resourceName == ResourceNameEnum.CDA_ACTUATOR_CMD_RESOURCE && this.mqttClient != null) {
+                this.mqttClient.publishMessage(resourceName, msg, 1);
+                _Logger.info("Reenviado comando de actuador desde la nube al CDA");
+            }
             return true;
         } else {
             return false;
@@ -150,7 +161,31 @@ public class DeviceDataManager implements IDataMessageListener
     {
         if (data != null) {
             _Logger.info("Handling sensor message: " + data.getName());
-            
+            this.lastSensorData = data;
+            // Almacenar localmente
+            if (this.persistenceAdapter != null) {
+                this.persistenceAdapter.storeData(resourceName.getResourceName(), 1, data);
+            }
+            // Enviar a la nube
+            if (this.cloudClientConnector != null) {
+                this.cloudClientConnector.sendEdgeDataToCloud(resourceName, data);
+            }
+            // Lógica de análisis: si temperatura > umbral, generar evento de actuador
+            if (ConfigConst.TEMP_SENSOR_NAME.equalsIgnoreCase(data.getName()) && data.getValue() > TEMP_THRESHOLD) {
+                _Logger.info("[GDA] Temperatura supera umbral, generando evento de actuador");
+                ActuatorData actuatorData = new ActuatorData();
+                actuatorData.setName(ConfigConst.LED_ACTUATOR_NAME);
+                actuatorData.setValue(ConfigConst.ON_COMMAND);
+                actuatorData.setStateData("Actuador encendido por GDA (umbral temperatura)");
+                // Enviar comando al CDA (por MQTT)
+                if (this.mqttClient != null) {
+                    this.mqttClient.publishMessage(ResourceNameEnum.CDA_ACTUATOR_CMD_RESOURCE, DataUtil.getInstance().actuatorDataToJson(actuatorData), 1);
+                }
+                // Enviar e-mail
+                if (this.smtpClientConnector != null) {
+                    this.smtpClientConnector.sendMessage(ResourceNameEnum.CDA_ACTUATOR_CMD_RESOURCE, DataUtil.getInstance().actuatorDataToJson(actuatorData), 10);
+                }
+            }
             if (data.hasError()) {
                 _Logger.warning("Error flag set for SensorData instance.");
             }
@@ -165,7 +200,15 @@ public class DeviceDataManager implements IDataMessageListener
     {
         if (data != null) {
             _Logger.info("Handling system performance message: " + data.getName());
-            
+            this.lastSystemPerfData = data;
+            // Almacenar localmente
+            if (this.persistenceAdapter != null) {
+                this.persistenceAdapter.storeData(resourceName.getResourceName(), 1, data);
+            }
+            // Enviar a la nube
+            if (this.cloudClientConnector != null) {
+                this.cloudClientConnector.sendEdgeDataToCloud(resourceName, data);
+            }
             if (data.hasError()) {
                 _Logger.warning("Error flag set for SystemPerformanceData instance.");
             }
@@ -190,32 +233,28 @@ public class DeviceDataManager implements IDataMessageListener
         if (this.mqttClient != null) {
             if (this.mqttClient.connectClient()) {
                 _Logger.info("Successfully connected MQTT client to broker.");
-    
-                // add necessary subscriptions
-    
                 int qos = ConfigConst.DEFAULT_QOS;
-                
                 this.mqttClient.subscribeToTopic(ResourceNameEnum.GDA_MGMT_STATUS_MSG_RESOURCE, qos);
                 this.mqttClient.subscribeToTopic(ResourceNameEnum.CDA_ACTUATOR_RESPONSE_RESOURCE, qos);
                 this.mqttClient.subscribeToTopic(ResourceNameEnum.CDA_SENSOR_MSG_RESOURCE, qos);
                 this.mqttClient.subscribeToTopic(ResourceNameEnum.CDA_SYSTEM_PERF_MSG_RESOURCE, qos);
             } else {
                 _Logger.severe("Failed to connect MQTT client to broker.");
-    
-                // TODO: take appropriate action
             }
         }
-    
         if (this.sysPerfMgr != null) {
             this.sysPerfMgr.startManager();
         }
-
         if (this.enableCoapServer && this.coapServer != null) {
             if (this.coapServer.startServer()) {
                 _Logger.info("CoAP server started.");
             } else {
                 _Logger.severe("Failed to start CoAP server.");
             }
+        }
+        // Suscribirse a eventos de la nube al iniciar
+        if (this.cloudClientConnector != null) {
+            this.subscribeToCloudEvents();
         }
     }
     
@@ -281,11 +320,16 @@ public class DeviceDataManager implements IDataMessageListener
         }
     
         if (this.enableCloudClient) {
-            // TODO: implement this in Lab Module 10
+            this.cloudClientConnector = new CloudClientConnector();
+            this.cloudClientConnector.setDataMessageListener(this);
+            this.cloudClientConnector.connectClient();
         }
-    
         if (this.enablePersistenceClient) {
-            // TODO: implement this as an optional exercise in Lab Module 5
+            this.persistenceAdapter = new RedisPersistenceAdapter();
+            this.persistenceAdapter.connectClient();
+        }
+        if (this.enableSmtpClient) {
+            this.smtpClientConnector = new SmtpClientConnector();
         }
     }
 
@@ -308,5 +352,23 @@ public class DeviceDataManager implements IDataMessageListener
         _Logger.fine("handleUpstreamTransmission called for resource: " + resourceName + " with QoS: " + qos);
         // TODO: Implement upstream transmission logic.
         return false;
+    }
+
+    // Método para almacenar datos internos de performance
+    public void handleInternalSystemPerformance(SystemPerformanceData data) {
+        this.lastInternalPerfData = data;
+        if (this.persistenceAdapter != null) {
+            this.persistenceAdapter.storeData(ResourceNameEnum.GDA_SYSTEM_PERF_MSG_RESOURCE.getResourceName(), 1, data);
+        }
+        if (this.cloudClientConnector != null) {
+            this.cloudClientConnector.sendEdgeDataToCloud(ResourceNameEnum.GDA_SYSTEM_PERF_MSG_RESOURCE, data);
+        }
+    }
+
+    // Suscribirse a eventos de la nube y reenviarlos al CDA
+    public void subscribeToCloudEvents() {
+        if (this.cloudClientConnector != null) {
+            this.cloudClientConnector.subscribeToCloudEvents(ResourceNameEnum.CDA_ACTUATOR_CMD_RESOURCE);
+        }
     }
 }
