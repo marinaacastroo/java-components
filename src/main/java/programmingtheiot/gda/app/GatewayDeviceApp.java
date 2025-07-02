@@ -108,14 +108,39 @@ public class GatewayDeviceApp
 	{
 		_Logger.info("Starting GDA...");
 		try {
-			// Explicit logging before publishing
-			_Logger.info("Connecting to Ubidots and publishing test payload...");
+			_Logger.info("Connecting to Ubidots and publishing sensor data...");
 			cloudClient.connectClient();
 			String deviceName = ConfigUtil.getInstance().getProperty(ConfigConst.GATEWAY_DEVICE, ConfigConst.DEVICE_LOCATION_ID_KEY, "gatewaydevice001");
-			String payload = "{\"temperature\": 25.5}";
-			_Logger.info("About to publish test payload to Ubidots: " + payload);
-			boolean publishResult = cloudClient.publishJsonToUbidots(deviceName, payload);
-			_Logger.info("Publish to Ubidots result: " + publishResult);
+
+			// Simulación y envío periódico de datos
+			Thread dataThread = new Thread(() -> {
+				try {
+					while (true) {
+						// Simular valores aleatorios
+						double temperature = 20.0 + Math.random() * 10.0; // 20-30°C
+						double humidity = 40.0 + Math.random() * 20.0;    // 40-60%
+						double pressure = 1000.0 + Math.random() * 20.0;   // 1000-1020 hPa
+
+						String payload = String.format("{\"temperature\": %.2f, \"humidity\": %.2f, \"pressure\": %.2f}", temperature, humidity, pressure);
+						_Logger.info("[PERIODIC] Publishing to Ubidots: " + payload);
+						cloudClient.publishJsonToUbidots(deviceName, payload);
+
+						// Evento de actuación: si temperatura > 28°C, encender LED
+						if (temperature > 28.0) {
+							String ledPayload = "{\"led\": 1}";
+							_Logger.info("[ACTUATION] Temperatura alta, enviando comando LED ON: " + ledPayload);
+							cloudClient.publishJsonToUbidots(deviceName, ledPayload);
+						}
+
+						Thread.sleep(10000); // cada 10 segundos
+					}
+				} catch (InterruptedException e) {
+					_Logger.warning("Data thread interrupted.");
+				}
+			});
+			dataThread.setDaemon(true);
+			dataThread.start();
+
 			if (this.sysPerfMgr.startManager()) {
 				_Logger.info("GDA started successfully.");
 			} else {

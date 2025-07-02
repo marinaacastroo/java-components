@@ -130,6 +130,30 @@ public class CloudClientConnector implements ICloudClient, IConnectionListener
 		}
 	}
 
+	/**
+	 * Publica un mensaje JSON en Ubidots usando el deviceName y el topicPrefix configurado.
+	 * Si el cliente no está conectado, guarda el mensaje y lo publica en onConnect().
+	 */
+	private String pendingDeviceName = null;
+	private String pendingPayload = null;
+
+	public boolean publishJsonToUbidots(String deviceName, String payload) {
+		if (deviceName == null || deviceName.isEmpty()) {
+			_Logger.warning("Device name is null o vacío. No se puede publicar en Ubidots.");
+			return false;
+		}
+		String topic = topicPrefix + deviceName;
+		if (this.mqttClient != null && this.mqttClient.isConnected()) {
+			_Logger.info("[DEBUG] Publicando en topic: " + topic + " payload: " + payload);
+			return publishMessageToCloud(topic, payload);
+		} else {
+			_Logger.warning("No hay conexión MQTT activa. Guardando mensaje pendiente para publicar en onConnect.");
+			pendingDeviceName = deviceName;
+			pendingPayload = payload;
+			return false;
+		}
+	}
+
 	@Override
 	public void onConnect() {
 		_Logger.info("Handling CSP subscriptions and device topic provisioning...");
@@ -142,6 +166,14 @@ public class CloudClientConnector implements ICloudClient, IConnectionListener
 		String adJson = DataUtil.getInstance().actuatorDataToJson(ad);
 		this.publishMessageToCloud(ledTopic, adJson);
 		this.mqttClient.subscribeToTopic(ledTopic, this.qosLevel, ledListener);
+		// Publicar mensaje pendiente si existe
+		if (pendingDeviceName != null && pendingPayload != null) {
+			String topic = topicPrefix + pendingDeviceName;
+			_Logger.info("[DEBUG] Publicando mensaje pendiente... topic: " + topic + " payload: " + pendingPayload);
+			publishMessageToCloud(topic, pendingPayload);
+			pendingDeviceName = null;
+			pendingPayload = null;
+		}
 	}
 
 	@Override
@@ -248,5 +280,12 @@ public class CloudClientConnector implements ICloudClient, IConnectionListener
 			_Logger.warning("Unsubscribe method only available for MQTT. No MQTT connection to broker. Ignoring. Topic: " + topicName);
 		}
 		return success;
+	}
+
+	/**
+	 * Getter público para topicPrefix (útil para depuración).
+	 */
+	public String getTopicPrefix() {
+		return this.topicPrefix;
 	}
 }
